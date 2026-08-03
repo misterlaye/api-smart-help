@@ -3,6 +3,8 @@ __pycache__/
 .venv/
 .pytest_cache/
 
+flowcharts/*.png
+
 .env
 .DS_Store
 Thumbs.db
