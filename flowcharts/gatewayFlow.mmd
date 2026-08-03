@@ -1,0 +1,29 @@
+---
+references:
+  - "File: /services/gateway/app/main.py"
+generationTime: 2026-08-03T16:14:36.404Z
+---
+flowchart TD
+    Start["HTTP POST /support-ticket"] --> ReadFiles["Read audio/image files"]
+    ReadFiles --> AsyncGather["Async gather transcribe_audio + analyze_image"]
+    AsyncGather --> Transcribe["transcribe_audio(file_bytes)"]
+    AsyncGather --> Analyze["analyze_image(file_bytes)"]
+    Transcribe --> AudioService["Call Audio Service /transcribe"]
+    Analyze --> VisionService["Call Vision Service /analyze"]
+    AudioService --> TranscribeResult["Return transcription or audio error placeholder"]
+    VisionService --> AnalyzeResult["Return diagnosis or vision error placeholder"]
+    TranscribeResult --> BuildContext["Build contexte_global"]
+    AnalyzeResult --> BuildContext
+    BuildContext --> CheckContext{"Contexte fourni ?"}
+    CheckContext -- No --> Error["Raise HTTPException 400"]
+    CheckContext -- Yes --> RAG["interroger_rag(contexte_global)"]
+    RAG --> RAGService["Call RAG Service /search-rule"]
+    RAGService --> RuleResult["Return rule_content or RAG error placeholder"]
+    RuleResult --> RejectCheck{"'refus' or 'non remboursable' in rule?"}
+    RejectCheck -- Yes --> Rejected["TicketStatus.REJECTED"]
+    RejectCheck -- No --> RefundCheck{"'remboursement accepté' or 'remboursable' in rule?"}
+    RefundCheck -- Yes --> Refundable["TicketStatus.REFUNDABLE"]
+    RefundCheck -- No --> NeedsReview["TicketStatus.NEEDS_REVIEW"]
+    Rejected --> Response["Return TicketResponse"]
+    Refundable --> Response
+    NeedsReview --> Response
