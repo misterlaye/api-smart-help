@@ -1,0 +1,49 @@
+---
+references:
+  - "File: /services/rag/app/main.py"
+generationTime: 2026-08-04T16:57:36.631Z
+---
+flowchart TD
+    Start["Start Application"] --> Lifespan[["lifespan(app)"]]
+    
+    Lifespan[["lifespan(app)"]] --> LoadEmbeddings["Load Embeddings Model"]
+    LoadEmbeddings --> DBExists?{"Does DB_PATH exist?"}
+    
+    DBExists? -->|"No"| InitVS[["initialize_vector_store(embeddings_model)"]]
+    DBExists? -->|"Yes"| LoadChroma["Load existing Chroma DB"]
+    
+    %% initialize_vector_store subflow
+    InitVS --> CheckFile?{"Does 'data/sources_rag.md' exist?"}
+    CheckFile? -->|"No"| FileNotFound["Raise FileNotFoundError"]
+    CheckFile? -->|"Yes"| ReadFile["Read markdown file"]
+    ReadFile --> SplitHeaders["MarkdownHeaderTextSplitter"]
+    SplitHeaders --> ChunkText["RecursiveCharacterTextSplitter"]
+    ChunkText --> CheckSplits?{"final_splits non-empty?"}
+    CheckSplits? -->|"No"| ValueError["Raise ValueError"]
+    CheckSplits? -->|"Yes"| CreateChroma[[Chroma.from_documents - persist]]
+    CreateChroma --> Persisted["Return Chroma instance"]
+    Persisted --> SetState["app.state.vectorstore = vectorstore"]
+    FileNotFound --> InitError["Error -> abort startup"]
+    ValueError --> InitError
+    
+    %% lifespan continuation and shutdown
+    LoadChroma --> SetState
+    SetState --> RunApp["Run FastAPI app"]
+    RunApp -->|on shutdown| Shutdown["Delete app.state.vectorstore"]
+    Shutdown --> End["Stop Service"]
+    
+    %% API endpoint flow
+    RunApp --> APIRequest[["POST /search-rule"]]
+    APIRequest --> CheckVS?{"Is app.state.vectorstore present?"}
+    CheckVS? -->|"No"| HTTP503["HTTPException 503"]
+    CheckVS? -->|"Yes"| CheckTopK?{"Is request.top_k >= 1?"}
+    CheckTopK? -->|"No"| HTTP400["HTTPException 400"]
+    CheckTopK? -->|"Yes"| RunSearch["Run similarity_search_with_score (threadpool)"]
+    RunSearch --> ResultsEmpty?{"docs_and_scores empty?"}
+    ResultsEmpty? -->|"Yes"| HTTP404["HTTPException 404"]
+    ResultsEmpty? -->|"No"| TakeBest["Select best_doc, best_score"]
+    TakeBest --> ExtractTitle["Extract title from metadata"]
+    ExtractTitle --> ReturnResp["Return RAGQueryResponse (rule_title, rule_content, similarity_score)"]
+    
+    %% exception path
+    RunSearch -.->|exceptions| LogException["logger.exception + HTTPException 500"]
