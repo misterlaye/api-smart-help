@@ -1,4 +1,11 @@
 .vscode/
-.venv/
 __pycache__/
+.venv/
+.pytest_cache/
+
+chroma_db/
 flowcharts/*.png
+
+.env
+.DS_Store
+Thumbs.db

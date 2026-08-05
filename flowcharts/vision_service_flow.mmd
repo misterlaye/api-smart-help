@@ -1,0 +1,25 @@
+---
+references:
+  - "File: /services/vision/app/main.py"
+generationTime: 2026-08-03T23:49:03.432Z
+---
+flowchart TD
+    Start["App startup / FastAPI init"] --> Lifespan["lifespan() loads HF CLIP pipeline"]
+    Lifespan --> Ready["Vision service ready"]
+    Ready --> Request["HTTP POST /analyze"]
+    Request --> Validate["Check image extension .jpg/.jpeg/.png"]
+    Validate -->|Invalid| BadReq["Raise HTTPException 400"]
+    Validate -->|Valid| ReadFile["Read uploaded file bytes"]
+    ReadFile --> OpenImage["Open image with PIL Image.open"]
+    OpenImage --> ModeCheck{"image.mode == 'RGB'?"}
+    ModeCheck -->|No| Convert["Convert image to RGB"]
+    ModeCheck -->|Yes| Keep["Keep RGB image"]
+    Convert --> Inference["Run app.state.vision pipeline in threadpool"]
+    Keep --> Inference
+    Inference --> Select["Select best match result[0]"]
+    Select --> Build["Build diagnosis text and response model"]
+    Build --> Success["Return VisionAnalysisResponse"]
+    OpenImage -->|Error| Error["Log exception and raise HTTPException 500"]
+    ReadFile -->|Error| Error
+    Convert -->|Error| Error
+    Inference -->|Error| Error
