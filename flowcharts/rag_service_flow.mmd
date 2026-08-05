@@ -1,18 +1,19 @@
 ---
 references:
   - "File: /services/rag/app/main.py"
-generationTime: 2026-08-04T16:57:36.631Z
+generationTime: 2026-08-05T11:56:57.008Z
 ---
 flowchart TD
     Start["Start Application"] --> Lifespan[["lifespan(app)"]]
     
     Lifespan[["lifespan(app)"]] --> LoadEmbeddings["Load Embeddings Model"]
-    LoadEmbeddings --> DBExists?{"Does DB_PATH exist?"}
-    
-    DBExists? -->|"No"| InitVS[["initialize_vector_store(embeddings_model)"]]
-    DBExists? -->|"Yes"| LoadChroma["Load existing Chroma DB"]
+    LoadEmbeddings --> LoadChroma["Load ChromaDB"]
     
     %% initialize_vector_store subflow
+    LoadChroma --> CheckCount?{"Is collection count == 0?"}
+    CheckCount? -->|"Yes"| InitVS[["initialize_vector_store(embeddings_model)"]]
+    CheckCount? -->|"No"| LogExisting["Log existing collection count"]
+    
     InitVS --> CheckFile?{"Does 'data/sources_rag.md' exist?"}
     CheckFile? -->|"No"| FileNotFound["Raise FileNotFoundError"]
     CheckFile? -->|"Yes"| ReadFile["Read markdown file"]
@@ -27,7 +28,7 @@ flowchart TD
     ValueError --> InitError
     
     %% lifespan continuation and shutdown
-    LoadChroma --> SetState
+    LogExisting --> SetState
     SetState --> RunApp["Run FastAPI app"]
     RunApp -->|on shutdown| Shutdown["Delete app.state.vectorstore"]
     Shutdown --> End["Stop Service"]

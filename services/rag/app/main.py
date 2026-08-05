@@ -64,17 +64,25 @@ async def lifespan(app: FastAPI):
     embeddings_model = HuggingFaceEmbeddings(model_name=MODEL_NAME)
     
     # 2. Initialisation ou Chargement de ChromaDB
-    if not os.path.exists(DB_PATH):
-        logger.info("Base ChromaDB introuvable. Lancement de l'indexation...")
-        app.state.vectorstore = await run_in_threadpool(initialize_vector_store, embeddings_model)
-    else:
-        logger.info('Chargement de la base vectorielle ChromaDB existante...')
-        app.state.vectorstore = Chroma(
-            collection_name='support_rules',
-            persist_directory=DB_PATH,
-            embedding_function=embeddings_model
+    logger.info("Chargement de ChromaDB...")
+
+    app.state.vectorstore = Chroma(
+        collection_name='support_rules',
+        persist_directory=DB_PATH,
+        embedding_function=embeddings_model
+    )
+
+    count = app.state.vectorstore._collection.count()
+
+    if count == 0:
+        logger.info("Collection vide. Lancement de l'indexation...")
+        app.state.vectorstore = await run_in_threadpool(
+            initialize_vector_store,
+            embeddings_model
         )
-        
+    else:
+        logger.info(f"Collection existante avec {count} documents.")
+
     yield
     
     # 3. Arrêt du service
