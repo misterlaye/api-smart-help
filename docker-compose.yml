@@ -1,0 +1,48 @@
+services:
+  gateway:
+    build: ./services/gateway
+    volumes:
+      - ./services/gateway:/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    ports:
+      - "8000:8000"
+    environment:
+      - AUDIO_SERVICE_URL=http://audio:8000
+      - VISION_SERVICE_URL=http://vision:8000
+      - RAG_SERVICE_URL=http://rag:8000
+    depends_on:
+      - audio
+      - vision
+      - rag
+
+  audio:
+    build: ./services/audio
+    volumes:
+      - ./services/audio:/app
+      - huggingface_cache:/root/.cache/huggingface
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    expose:
+      - "8000"
+
+  vision:
+    build: ./services/vision
+    volumes:
+      - ./services/vision:/app
+      - huggingface_cache:/root/.cache/huggingface
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    expose:
+      - "8000"
+
+  rag:
+    build: ./services/rag
+    volumes:
+      - ./services/rag:/app
+      - huggingface_cache:/root/.cache/huggingface
+      - rag_db:/app/chroma_db
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    expose:
+      - "8000"
+
+volumes:
+  huggingface_cache:
+  rag_db:
