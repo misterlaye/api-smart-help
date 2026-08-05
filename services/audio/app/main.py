@@ -14,7 +14,7 @@ from .schemas import AudioTranscriptionResponse
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-ALLOWED_EXTENSIONS = {'.mp3', '.wav', '.m4a', '.ogg'}
+ALLOWED_EXTENSIONS = {'.mp3', '.mp4', '.wav', '.m4a', '.ogg'}
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -44,7 +44,7 @@ async def transcribe_audio(file: UploadFile = File(...)):
     if suffix not in ALLOWED_EXTENSIONS:
         raise HTTPException(
             status_code=400, 
-            detail='Format audio non supporté. Veuillez fournir un fichier MP3, WAV, M4A ou OGG.'
+            detail='Format audio non supporté. Veuillez fournir un fichier MP3, MP4, WAV, M4A ou OGG.'
         )
 
     temp_path = None
