@@ -3,6 +3,7 @@ import logging
 
 import httpx
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 
 from .config import settings
 from .schemas import TicketResponse, TicketStatus
@@ -12,6 +13,14 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title='API Gateway - Support Client')
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 async def transcribe_audio(file_bytes: bytes, filename: str | None, content_type: str | None) -> str | None:
     if not file_bytes:
