@@ -17,6 +17,8 @@ services:
 
   audio:
     build: ./services/audio
+    environment:
+      HF_TOKEN: ${HF_TOKEN}
     volumes:
       - ./services/audio:/app
       - huggingface_cache:/root/.cache/huggingface
@@ -26,6 +28,8 @@ services:
 
   vision:
     build: ./services/vision
+    environment:
+      HF_TOKEN: ${HF_TOKEN}
     volumes:
       - ./services/vision:/app
       - huggingface_cache:/root/.cache/huggingface
@@ -35,6 +39,8 @@ services:
 
   rag:
     build: ./services/rag
+    env_file:
+      - .env
     volumes:
       - ./services/rag:/app
       - huggingface_cache:/root/.cache/huggingface
