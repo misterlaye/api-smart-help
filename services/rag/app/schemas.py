@@ -9,3 +9,4 @@ class RAGQueryResponse(BaseModel):
     rule_title: str
     rule_content: str
     similarity_score: float = Field(description='Score de similarité entre la requête et la règle')
+    llm_decision: str = Field(description="Décision et explication générées par le LLM sur la base de la règle")

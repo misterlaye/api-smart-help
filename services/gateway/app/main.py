@@ -8,7 +8,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from .config import settings
 from .schemas import TicketResponse, TicketStatus
 
-# Configuration d'un logger pour tracer nos erreurs sans faire crasher l'app
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -27,7 +26,7 @@ async def transcribe_audio(file_bytes: bytes, filename: str | None, content_type
         return None
     
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
+        async with httpx.AsyncClient(timeout=60.0) as client:
             response = await client.post(
                 f'{settings.audio_service_url}/transcribe',
                 files={'file': (filename, file_bytes, content_type)}
@@ -47,7 +46,7 @@ async def analyze_image(file_bytes: bytes, filename: str | None, content_type: s
         return None
     
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
+        async with httpx.AsyncClient(timeout=60.0) as client:
             response = await client.post(
                 f'{settings.vision_service_url}/analyze',
                 files={'file': (filename, file_bytes, content_type)}
@@ -62,33 +61,51 @@ async def analyze_image(file_bytes: bytes, filename: str | None, content_type: s
         logger.exception("Erreur inattendue lors de l'analyse d'image")
         return '[Erreur : Analyse visuelle temporairement indisponible]'
 
-async def interroger_rag(texte: str) -> str:
+async def interroger_rag(texte: str):
     if not texte.strip():
-        return 'Aucun texte fourni pour la recherche RAG.'
+        return {
+            "rule_title": '',
+            "rule_content": '',
+            "llm_decision": "Aucun texte fourni pour la recherche RAG."
+        }
     
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
+        async with httpx.AsyncClient(timeout=60.0) as client:
             response = await client.post(
                 f'{settings.rag_service_url}/search-rule',
                 json={'query_text': texte, 'top_k': 1}
             )
             response.raise_for_status()
+            data = response.json()
 
-            return response.json().get('rule_content', 'Aucune règle trouvée.')
+            return {
+                "rule_title": data.get('rule_title', 'Règle métier'),
+                "rule_content": data.get('rule_content', 'Aucune règle trouvée.'),
+                "llm_decision": data.get('llm_decision', "Aucune décision générée par l'IA.")
+            }
     except httpx.HTTPError as e:
-            logger.error(f'Erreur du service RAG: {e}')
-            return '[Erreur : Service RAG temporairement indisponible]'
+        logger.error(f'Erreur du service RAG: {e}')
+        return {
+            "rule_title": "Erreur Service RAG",
+            "rule_content": "[Erreur : Service RAG temporairement indisponible]",
+            "llm_decision": "[Erreur : Analyse LLM indisponible]"
+        }
     except Exception:
         logger.exception("Erreur inattendue lors de l'interrogation RAG")
-        return '[Erreur : Service RAG temporairement indisponible]'
+        return {
+            "rule_title": "Erreur Service RAG",
+            "rule_content": "[Erreur : Service RAG temporairement indisponible]",
+            "llm_decision": "[Erreur : Analyse LLM indisponible]"
+        }
 
-def calculate_status(rule: str) -> TicketStatus:
-    '''Logique métier simplifiée intégrée au Gateway.'''
+def calculate_status(llm_decision: str) -> TicketStatus:
+    """Analyse la décision explicite générée par le LLM pour déterminer le statut."""
+    decision_upper = llm_decision.upper()
     
-    if 'refus' in rule.lower() or 'non remboursable' in rule.lower():
+    if '[REFUSÉ]' in decision_upper or 'REFUSÉ' in decision_upper:
         return TicketStatus.REJECTED
     
-    if 'remboursement accepté' in rule.lower() or 'remboursable' in rule.lower():
+    if '[ACCEPTÉ]' in decision_upper or 'ACCEPTÉ' in decision_upper:
         return TicketStatus.REFUNDABLE
 
     return TicketStatus.NEEDS_REVIEW
@@ -104,7 +121,7 @@ async def create_support_ticket(
     audio_bytes = await audio.read() if audio else b''
     image_bytes = await image.read() if image else b''
     
-    # 2. Préparation des requêtes parallèles
+    # 2. Requêtes parallèles
     # asyncio.gather lance les fonctions en même temps et attend qu'elles finissent toutes
     transcription, diagnostic = await asyncio.gather(
         transcribe_audio(audio_bytes, audio.filename if audio else '', audio.content_type if audio else ''),
@@ -126,15 +143,23 @@ async def create_support_ticket(
         raise HTTPException(status_code=400, detail='Vous devez fournir au moins un audio, une image ou une description.')
 
     # 4. Requête au service RAG
-    rule_found = await interroger_rag(contexte_global)
+    rag_result = await interroger_rag(contexte_global)
     
     # 5. Calcul de la décision finale
-    status = calculate_status(rule_found)
+    status = calculate_status(rag_result['llm_decision'])
+
+    # Formatage du texte pour l'attribut applied_rule renvoyé au frontend
+    formatted_rule = (
+        f"{rag_result['rule_title']}\n"
+        f"{rag_result['rule_content']}\n\n"
+        f"Décision IA :\n"
+        f"{rag_result['llm_decision']}"
+    )
     
     # 6. Réponse au client
     return TicketResponse(
         transcription=transcription,
         image_diagnosis=diagnostic,
-        applied_rule=rule_found,
+        applied_rule=formatted_rule,
         status=status
     )

@@ -5,11 +5,15 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.concurrency import run_in_threadpool
 from langchain_chroma import Chroma
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.prompts import ChatPromptTemplate
 from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_mistralai import ChatMistralAI
 from langchain_text_splitters import (
     MarkdownHeaderTextSplitter,
     RecursiveCharacterTextSplitter,
 )
+from pydantic import SecretStr
 
 from app.schemas import RAGQueryRequest, RAGQueryResponse
 
@@ -19,6 +23,8 @@ logger = logging.getLogger(__name__)
 DB_PATH = './chroma_db'
 FILEPATH = 'data/sources_rag.md'
 MODEL_NAME = 'sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2'
+LLM_MODEL_NAME = os.getenv('LLM_MODEL_NAME', 'ministral-3b-2512')
+LLM_API_KEY = SecretStr(os.environ['MISTRAL_API_KEY'])
 
 def initialize_vector_store(embeddings_model: HuggingFaceEmbeddings) -> Chroma:
     '''
@@ -83,12 +89,42 @@ async def lifespan(app: FastAPI):
     else:
         logger.info(f"Collection existante avec {count} documents.")
 
+# 2. Initialisation du LLM et du Prompt LCEL
+    logger.info(f"Initialisation du LLM ({LLM_MODEL_NAME}...")
+    app.state.llm = ChatMistralAI(
+        api_key=LLM_API_KEY,
+        model_name=LLM_MODEL_NAME,
+        temperature=0.1
+    )
+
+    # Prompt orienté décision métier
+    system_prompt = (
+        "Tu es un agent expert du service client. "
+        "Ton rôle est d'analyser le problème d'un client et de prendre une décision stricte "
+        "en t'appuyant EXCLUSIVEMENT sur la règle métier fournie.\n\n"
+        "Règle métier applicable :\n{context}\n\n"
+        "Consignes :\n"
+        "1. Indique clairement ta décision : [ACCEPTÉ], [REFUSÉ] ou [EXAMEN REQUIS].\n"
+        "2. Explique en 2 phrases simples et professionnelles la raison en te basant sur la règle.\n"
+        "3. Ne propose aucun dédommagement qui n'est pas explicitement mentionné dans la règle."
+    )
+
+    prompt_template = ChatPromptTemplate.from_messages([
+        ("system", system_prompt),
+        ("human", "Description du problème du client :\n{question}")
+    ])
+
+    # Construction de la chaîne LCEL (Prompt -> LLM -> Output Parser)
+    app.state.rag_chain = prompt_template | app.state.llm | StrOutputParser()
+
     yield
     
     # 3. Arrêt du service
     logger.info('Arrêt du service RAG...')
     if hasattr(app.state, 'vectorstore'):
         del app.state.vectorstore
+    if hasattr(app.state, 'llm'):
+        del app.state.llm
 
 
 app = FastAPI(title='Smart Help - RAG Service', lifespan=lifespan)
@@ -103,6 +139,7 @@ async def search_rule(request: RAGQueryRequest):
         raise HTTPException(status_code=400, detail='Le paramètre top_k doit être supérieur ou égal à 1.')
 
     try:
+        # ÉTAPE 1 : Retrieval (Recherche vectorielle)
         docs_and_scores = await run_in_threadpool(
             app.state.vectorstore.similarity_search_with_score,
             request.query_text,
@@ -118,15 +155,23 @@ async def search_rule(request: RAGQueryRequest):
         best_content = best_doc.page_content
         
         logger.info(f'Règle trouvée : {best_title} (Score: {best_score})')
+
+        # ÉTAPE 2 : Generation (Appel asynchrone au LLM via LCEL)
+        logger.info(f"Génération de la décision LLM pour la règle : {best_title}")
+        llm_decision = await app.state.rag_chain.ainvoke({
+            "context": best_content,
+            "question": request.query_text
+        })
         
         return RAGQueryResponse(
             rule_title=best_title,
             rule_content=best_content,
-            similarity_score=float(best_score)
+            similarity_score=float(best_score),
+            llm_decision=llm_decision
         )
         
     except HTTPException:
         raise
     except Exception:
-        logger.exception('Erreur interne inattendue lors de la recherche vectorielle')
+        logger.exception('Erreur interne inattendue lors du traitement RAG')
         raise HTTPException(status_code=500, detail='Erreur interne du moteur RAG.')
