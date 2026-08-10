@@ -2,8 +2,6 @@
 
 Une architecture de **microservices FastAPI** pour la gestion intelligente des tickets de support client via **l'audio, la vision par ordinateur et la recherche augmentée par génération (RAG)**.
 
-> **Smart Help** automatise le triage des tickets support en analysant les demandes clients (audio, images, texte) et en les routant intelligemment selon les règles métier via un LLM.
-
 ---
 
 ## Vue d'ensemble
@@ -152,20 +150,6 @@ Une architecture de **microservices FastAPI** pour la gestion intelligente des t
 | `AUDIO_SERVICE_URL` | URL service Audio | `http://audio:8000` | `http://localhost:8001` |
 | `VISION_SERVICE_URL` | URL service Vision | `http://vision:8000` | `http://localhost:8002` |
 | `RAG_SERVICE_URL` | URL service RAG | `http://rag:8000` | `http://localhost:8003` |
-
-## 🚀 Démarrage rapide
-
-### 1. Vérifier que les services sont accessibles
-
-```bash
-# Gateway
-curl http://localhost:8000/docs
-
-# Chaque service expose aussi sa documentation Swagger
-curl http://localhost:8001/docs  # Audio
-curl http://localhost:8002/docs  # Vision
-curl http://localhost:8003/docs  # RAG
-```
 
 ---
 
@@ -331,14 +315,14 @@ uvicorn app.main:app --reload --port 8000
 
 ## Livrables du projet
 
-- ✅ Microservices FastAPI modulaires
-- ✅ Pipeline RAG complet (Retrieval + Generation)
-- ✅ Orchestration Docker Compose
-- ✅ Gestion d'erreurs robuste avec fallbacks
-- ✅ Support multilingue (Français)
-- ✅ Documentation Swagger/OpenAPI complète
-- ✅ Logging structuré async
-- ✅ CORS configuré pour frontend
+- Microservices FastAPI modulaires
+- Pipeline RAG complet (Retrieval + Generation)
+- Orchestration Docker Compose
+- Gestion d'erreurs robuste avec fallbacks
+- Support multilingue (Français)
+- Documentation Swagger/OpenAPI complète
+- Logging structuré async
+- CORS configuré pour frontend
 
 ---
 
